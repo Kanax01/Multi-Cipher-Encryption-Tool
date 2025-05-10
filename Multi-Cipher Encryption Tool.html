@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Cipher Encryption Tool</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        .tab-container {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #e0e0e0;
+            border: none;
+            border-radius: 5px 5px 0 0;
+            margin-right: 5px;
+        }
+        .tab.active {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+        textarea {
+            width: 100%;
+            height: 100px;
+            margin-bottom: 10px;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        select, input, button {
+            padding: 8px 12px;
+            margin-bottom: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        .result {
+            margin-top: 20px;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-radius: 4px;
+            border-left: 4px solid #4CAF50;
+        }
+        .method-options {
+            margin-bottom: 15px;
+            padding: 10px;
+            background-color: #f0f0f0;
+            border-radius: 4px;
+        }
+        .binary-options {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+        .binary-options label {
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Multi-Cipher Encryption Tool</h1>
+        
+        <div class="tab-container">
+            <button class="tab active" onclick="openTab('encoder')">Encoder</button>
+            <button class="tab" onclick="openTab('decoder')">Decoder</button>
+        </div>
+        
+        <!-- Encoder Tab -->
+        <div id="encoder" class="tab-content active">
+            <h2>Encoder</h2>
+            <textarea id="encodeInput" placeholder="Enter text to encode..."></textarea>
+            
+            <select id="encodeMethod" onchange="showEncodeOptions()">
+                <option value="caesar">Caesar Cipher</option>
+                <option value="rot13">ROT13</option>
+                <option value="vigenere">Vigenère Cipher</option>
+                <option value="atbash">Atbash Cipher</option>
+                <option value="xor">XOR Cipher</option>
+                <option value="binary">Binary</option>
+            </select>
+            
+            <div id="encodeOptions">
+                <!-- Options will be shown here based on selected method -->
+            </div>
+            
+            <button onclick="encodeText()">Encode</button>
+            
+            <div class="result">
+                <h3>Encoded Result:</h3>
+                <textarea id="encodeOutput" readonly></textarea>
+            </div>
+        </div>
+        
+        <!-- Decoder Tab -->
+        <div id="decoder" class="tab-content">
+            <h2>Decoder</h2>
+            <textarea id="decodeInput" placeholder="Enter text to decode..."></textarea>
+            
+            <select id="decodeMethod" onchange="showDecodeOptions()">
+                <option value="caesar">Caesar Cipher</option>
+                <option value="rot13">ROT13</option>
+                <option value="vigenere">Vigenère Cipher</option>
+                <option value="atbash">Atbash Cipher</option>
+                <option value="xor">XOR Cipher</option>
+                <option value="binary">Binary</option>
+            </select>
+            
+            <div id="decodeOptions">
+                <!-- Options will be shown here based on selected method -->
+            </div>
+            
+            <button onclick="decodeText()">Decode</button>
+            
+            <div class="result">
+                <h3>Decoded Result:</h3>
+                <textarea id="decodeOutput" readonly></textarea>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Tab functionality
+        function openTab(tabName) {
+            const tabs = document.getElementsByClassName('tab-content');
+            for (let i = 0; i < tabs.length; i++) {
+                tabs[i].classList.remove('active');
+            }
+            
+            const tabButtons = document.getElementsByClassName('tab');
+            for (let i = 0; i < tabButtons.length; i++) {
+                tabButtons[i].classList.remove('active');
+            }
+            
+            document.getElementById(tabName).classList.add('active');
+            event.currentTarget.classList.add('active');
+        }
+        
+        // Show options based on selected encode method
+        function showEncodeOptions() {
+            const method = document.getElementById('encodeMethod').value;
+            const optionsDiv = document.getElementById('encodeOptions');
+            
+            switch(method) {
+                case 'caesar':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <label>Shift amount:</label>
+                            <input type="number" id="caesarShift" value="3" min="1" max="25">
+                        </div>
+                    `;
+                    break;
+                case 'vigenere':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <label>Key:</label>
+                            <input type="text" id="vigenereKey" placeholder="Enter secret key">
+                        </div>
+                    `;
+                    break;
+                case 'xor':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <label>Key:</label>
+                            <input type="text" id="xorKey" placeholder="Enter XOR key">
+                        </div>
+                    `;
+                    break;
+                case 'binary':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options binary-options">
+                            <div>
+                                <input type="radio" id="binarySpace" name="binaryFormat" value="space" checked>
+                                <label for="binarySpace">Space-separated</label>
+                            </div>
+                            <div>
+                                <input type="radio" id="binaryNoSpace" name="binaryFormat" value="nospace">
+                                <label for="binaryNoSpace">No spaces</label>
+                            </div>
+                            <div>
+                                <input type="radio" id="binary8bit" name="binaryFormat" value="8bit">
+                                <label for="binary8bit">8-bit groups</label>
+                            </div>
+                        </div>
+                    `;
+                    break;
+                default:
+                    optionsDiv.innerHTML = '';
+            }
+        }
+        
+        // Show options based on selected decode method
+        function showDecodeOptions() {
+            const method = document.getElementById('decodeMethod').value;
+            const optionsDiv = document.getElementById('decodeOptions');
+            
+            switch(method) {
+                case 'caesar':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <label>Shift amount:</label>
+                            <input type="number" id="caesarShiftDecode" value="3" min="1" max="25">
+                        </div>
+                    `;
+                    break;
+                case 'vigenere':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <label>Key:</label>
+                            <input type="text" id="vigenereKeyDecode" placeholder="Enter secret key">
+                        </div>
+                    `;
+                    break;
+                case 'xor':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <label>Key:</label>
+                            <input type="text" id="xorKeyDecode" placeholder="Enter XOR key">
+                        </div>
+                    `;
+                    break;
+                case 'binary':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <label>Binary format:</label>
+                            <select id="binaryFormatDecode">
+                                <option value="auto">Auto-detect</option>
+                                <option value="space">Space-separated</option>
+                                <option value="nospace">No spaces</option>
+                                <option value="8bit">8-bit groups</option>
+                            </select>
+                        </div>
+                    `;
+                    break;
+                default:
+                    optionsDiv.innerHTML = '';
+            }
+        }
+        
+        // Initialize options on page load
+        window.onload = function() {
+            showEncodeOptions();
+            showDecodeOptions();
+        };
+        
+        // Encoding functions
+        function caesarCipher(text, shift) {
+            return text.split('').map(char => {
+                if (char.match(/[a-z]/i)) {
+                    const code = char.charCodeAt(0);
+                    const offset = code >= 65 && code <= 90 ? 65 : 97;
+                    return String.fromCharCode(((code - offset + shift) % 26) + offset);
+                }
+                return char;
+            }).join('');
+        }
+        
+        function rot13(text) {
+            return caesarCipher(text, 13);
+        }
+        
+        function vigenereCipher(text, key, encode = true) {
+            key = key.toLowerCase().replace(/[^a-z]/g, '');
+            if (!key.length) return text;
+            
+            let keyIndex = 0;
+            return text.split('').map(char => {
+                if (char.match(/[a-z]/i)) {
+                    const code = char.charCodeAt(0);
+                    const offset = code >= 65 && code <= 90 ? 65 : 97;
+                    const keyChar = key.charCodeAt(keyIndex % key.length) - 97;
+                    const shift = encode ? keyChar : (26 - keyChar) % 26;
+                    keyIndex++;
+                    return String.fromCharCode(((code - offset + shift) % 26) + offset);
+                }
+                return char;
+            }).join('');
+        }
+        
+        function atbashCipher(text) {
+            return text.split('').map(char => {
+                if (char.match(/[a-z]/)) {
+                    return String.fromCharCode(122 - (char.charCodeAt(0) - 97));
+                } else if (char.match(/[A-Z]/)) {
+                    return String.fromCharCode(90 - (char.charCodeAt(0) - 65));
+                }
+                return char;
+            }).join('');
+        }
+        
+        function xorCipher(text, key) {
+            let result = '';
+            for (let i = 0; i < text.length; i++) {
+                const keyChar = key.charCodeAt(i % key.length);
+                result += String.fromCharCode(text.charCodeAt(i) ^ keyChar);
+            }
+            return result;
+        }
+        
+        function toBinary(text, format) {
+            let binary = '';
+            for (let i = 0; i < text.length; i++) {
+                let charBinary = text.charCodeAt(i).toString(2);
+                // Ensure 8 bits per character
+                while (charBinary.length < 8) charBinary = '0' + charBinary;
+                
+                binary += charBinary;
+            }
+            
+            // Format the binary output
+            switch(format) {
+                case 'space':
+                    return binary.split('').join(' ');
+                case '8bit':
+                    return binary.match(/.{1,8}/g).join(' ');
+                case 'nospace':
+                    return binary;
+                default:
+                    return binary.match(/.{1,8}/g).join(' ');
+            }
+        }
+        
+        // Decoding functions
+        function fromBinary(binaryStr, format) {
+            // Clean and normalize the binary string
+            let cleanBinary = binaryStr.replace(/[^01]/g, '');
+            
+            // If format is auto, try to detect
+            if (format === 'auto') {
+                // Check if it's already space-separated bytes
+                const spaceSeparated = binaryStr.trim().split(/\s+/);
+                if (spaceSeparated.every(byte => byte.length === 8 || byte.length === 0)) {
+                    cleanBinary = spaceSeparated.join('');
+                }
+                // Otherwise use the clean binary we already have
+            } else if (format === 'space') {
+                cleanBinary = binaryStr.replace(/\s/g, '');
+            } else if (format === '8bit') {
+                cleanBinary = binaryStr.split(/\s+/).join('');
+            }
+            
+            // Split into 8-bit chunks
+            const bytes = cleanBinary.match(/.{1,8}/g) || [];
+            
+            // Convert to text
+            let result = '';
+            for (let byte of bytes) {
+                if (byte.length === 8) {
+                    result += String.fromCharCode(parseInt(byte, 2));
+                }
+            }
+            return result;
+        }
+        
+        // Main encode function
+        function encodeText() {
+            const text = document.getElementById('encodeInput').value;
+            const method = document.getElementById('encodeMethod').value;
+            let result = '';
+            
+            switch(method) {
+                case 'caesar':
+                    const shift = parseInt(document.getElementById('caesarShift').value);
+                    result = caesarCipher(text, shift);
+                    break;
+                case 'rot13':
+                    result = rot13(text);
+                    break;
+                case 'vigenere':
+                    const key = document.getElementById('vigenereKey').value;
+                    result = vigenereCipher(text, key, true);
+                    break;
+                case 'atbash':
+                    result = atbashCipher(text);
+                    break;
+                case 'xor':
+                    const xorKey = document.getElementById('xorKey').value;
+                    result = xorCipher(text, xorKey);
+                    break;
+                case 'binary':
+                    const format = document.querySelector('input[name="binaryFormat"]:checked').value;
+                    result = toBinary(text, format);
+                    break;
+                default:
+                    result = 'Select a valid encoding method';
+            }
+            
+            document.getElementById('encodeOutput').value = result;
+        }
+        
+        // Main decode function
+        function decodeText() {
+            const text = document.getElementById('decodeInput').value;
+            const method = document.getElementById('decodeMethod').value;
+            let result = '';
+            
+            switch(method) {
+                case 'caesar':
+                    const shift = parseInt(document.getElementById('caesarShiftDecode').value);
+                    result = caesarCipher(text, (26 - shift) % 26);
+                    break;
+                case 'rot13':
+                    result = rot13(text);
+                    break;
+                case 'vigenere':
+                    const key = document.getElementById('vigenereKeyDecode').value;
+                    result = vigenereCipher(text, key, false);
+                    break;
+                case 'atbash':
+                    result = atbashCipher(text);
+                    break;
+                case 'xor':
+                    const xorKey = document.getElementById('xorKeyDecode').value;
+                    result = xorCipher(text, xorKey);
+                    break;
+                case 'binary':
+                    const format = document.getElementById('binaryFormatDecode').value;
+                    result = fromBinary(text, format);
+                    break;
+                default:
+                    result = 'Select a valid decoding method';
+            }
+            
+            document.getElementById('decodeOutput').value = result;
+        }
+    </script>
+</body>
+</html>
