@@ -89,6 +89,27 @@
         .binary-options label {
             white-space: nowrap;
         }
+        .aes-warning {
+            background-color: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+        .error {
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            color: #721c24;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        .loading {
+            opacity: 0.6;
+            pointer-events: none;
+        }
     </style>
 </head>
 <body>
@@ -112,6 +133,7 @@
                 <option value="atbash">Atbash Cipher</option>
                 <option value="xor">XOR Cipher</option>
                 <option value="binary">Binary</option>
+                <option value="aes">AES-256 (Military Grade)</option>
             </select>
             
             <div id="encodeOptions">
@@ -123,6 +145,7 @@
             <div class="result">
                 <h3>Encoded Result:</h3>
                 <textarea id="encodeOutput" readonly></textarea>
+                <div id="encodeError" class="error" style="display: none;"></div>
             </div>
         </div>
         
@@ -138,6 +161,7 @@
                 <option value="atbash">Atbash Cipher</option>
                 <option value="xor">XOR Cipher</option>
                 <option value="binary">Binary</option>
+                <option value="aes">AES-256 (Military Grade)</option>
             </select>
             
             <div id="decodeOptions">
@@ -149,6 +173,7 @@
             <div class="result">
                 <h3>Decoded Result:</h3>
                 <textarea id="decodeOutput" readonly></textarea>
+                <div id="decodeError" class="error" style="display: none;"></div>
             </div>
         </div>
     </div>
@@ -218,8 +243,36 @@
                         </div>
                     `;
                     break;
+                case 'aes':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <div class="aes-warning">
+                                🔒 <strong>AES-256 Military Grade Encryption</strong><br>
+                                This uses the same encryption standard approved by the NSA for TOP SECRET information.
+                                Your password will be used to derive a 256-bit encryption key using PBKDF2.
+                            </div>
+                            <label>Password:</label>
+                            <input type="password" id="aesPassword" placeholder="Enter strong password">
+                            <br>
+                            <label>
+                                <input type="checkbox" id="showAesPassword"> Show password
+                            </label>
+                        </div>
+                    `;
+                    break;
                 default:
                     optionsDiv.innerHTML = '';
+            }
+            
+            // Add event listener for show password checkbox
+            if (method === 'aes') {
+                setTimeout(() => {
+                    const checkbox = document.getElementById('showAesPassword');
+                    const passwordField = document.getElementById('aesPassword');
+                    checkbox.addEventListener('change', function() {
+                        passwordField.type = this.checked ? 'text' : 'password';
+                    });
+                }, 0);
             }
         }
         
@@ -266,8 +319,35 @@
                         </div>
                     `;
                     break;
+                case 'aes':
+                    optionsDiv.innerHTML = `
+                        <div class="method-options">
+                            <div class="aes-warning">
+                                🔓 <strong>AES-256 Decryption</strong><br>
+                                Enter the same password that was used for encryption.
+                            </div>
+                            <label>Password:</label>
+                            <input type="password" id="aesPasswordDecode" placeholder="Enter password">
+                            <br>
+                            <label>
+                                <input type="checkbox" id="showAesPasswordDecode"> Show password
+                            </label>
+                        </div>
+                    `;
+                    break;
                 default:
                     optionsDiv.innerHTML = '';
+            }
+            
+            // Add event listener for show password checkbox
+            if (method === 'aes') {
+                setTimeout(() => {
+                    const checkbox = document.getElementById('showAesPasswordDecode');
+                    const passwordField = document.getElementById('aesPasswordDecode');
+                    checkbox.addEventListener('change', function() {
+                        passwordField.type = this.checked ? 'text' : 'password';
+                    });
+                }, 0);
             }
         }
         
@@ -354,6 +434,93 @@
             }
         }
         
+        // AES Encryption Functions
+        async function deriveKey(password, salt) {
+            const enc = new TextEncoder();
+            const keyMaterial = await window.crypto.subtle.importKey(
+                'raw',
+                enc.encode(password),
+                'PBKDF2',
+                false,
+                ['deriveBits', 'deriveKey']
+            );
+            
+            return window.crypto.subtle.deriveKey(
+                {
+                    name: 'PBKDF2',
+                    salt: salt,
+                    iterations: 100000,
+                    hash: 'SHA-256'
+                },
+                keyMaterial,
+                { name: 'AES-GCM', length: 256 },
+                true,
+                ['encrypt', 'decrypt']
+            );
+        }
+        
+        async function aesEncrypt(text, password) {
+            const enc = new TextEncoder();
+            const data = enc.encode(text);
+            
+            // Generate random salt and IV
+            const salt = window.crypto.getRandomValues(new Uint8Array(16));
+            const iv = window.crypto.getRandomValues(new Uint8Array(12));
+            
+            // Derive key from password
+            const key = await deriveKey(password, salt);
+            
+            // Encrypt the data
+            const encrypted = await window.crypto.subtle.encrypt(
+                {
+                    name: 'AES-GCM',
+                    iv: iv
+                },
+                key,
+                data
+            );
+            
+            // Combine salt + iv + encrypted data
+            const result = new Uint8Array(salt.length + iv.length + encrypted.byteLength);
+            result.set(salt, 0);
+            result.set(iv, salt.length);
+            result.set(new Uint8Array(encrypted), salt.length + iv.length);
+            
+            // Convert to base64 for easy storage/transmission
+            return btoa(String.fromCharCode.apply(null, result));
+        }
+        
+        async function aesDecrypt(encryptedData, password) {
+            try {
+                // Decode from base64
+                const data = new Uint8Array(atob(encryptedData).split('').map(char => char.charCodeAt(0)));
+                
+                // Extract salt, IV, and encrypted data
+                const salt = data.slice(0, 16);
+                const iv = data.slice(16, 28);
+                const encrypted = data.slice(28);
+                
+                // Derive key from password
+                const key = await deriveKey(password, salt);
+                
+                // Decrypt the data
+                const decrypted = await window.crypto.subtle.decrypt(
+                    {
+                        name: 'AES-GCM',
+                        iv: iv
+                    },
+                    key,
+                    encrypted
+                );
+                
+                // Convert back to text
+                const dec = new TextDecoder();
+                return dec.decode(decrypted);
+            } catch (error) {
+                throw new Error('Decryption failed. Check your password and try again.');
+            }
+        }
+        
         // Decoding functions
         function fromBinary(binaryStr, format) {
             // Clean and normalize the binary string
@@ -386,76 +553,151 @@
             return result;
         }
         
+        // Error handling functions
+        function showError(elementId, message) {
+            const errorDiv = document.getElementById(elementId);
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+        
+        function hideError(elementId) {
+            const errorDiv = document.getElementById(elementId);
+            errorDiv.style.display = 'none';
+        }
+        
+        function setLoading(isLoading) {
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(btn => {
+                if (isLoading) {
+                    btn.classList.add('loading');
+                } else {
+                    btn.classList.remove('loading');
+                }
+            });
+        }
+        
         // Main encode function
-        function encodeText() {
+        async function encodeText() {
             const text = document.getElementById('encodeInput').value;
             const method = document.getElementById('encodeMethod').value;
             let result = '';
             
-            switch(method) {
-                case 'caesar':
-                    const shift = parseInt(document.getElementById('caesarShift').value);
-                    result = caesarCipher(text, shift);
-                    break;
-                case 'rot13':
-                    result = rot13(text);
-                    break;
-                case 'vigenere':
-                    const key = document.getElementById('vigenereKey').value;
-                    result = vigenereCipher(text, key, true);
-                    break;
-                case 'atbash':
-                    result = atbashCipher(text);
-                    break;
-                case 'xor':
-                    const xorKey = document.getElementById('xorKey').value;
-                    result = xorCipher(text, xorKey);
-                    break;
-                case 'binary':
-                    const format = document.querySelector('input[name="binaryFormat"]:checked').value;
-                    result = toBinary(text, format);
-                    break;
-                default:
-                    result = 'Select a valid encoding method';
-            }
+            hideError('encodeError');
             
-            document.getElementById('encodeOutput').value = result;
+            try {
+                switch(method) {
+                    case 'caesar':
+                        const shift = parseInt(document.getElementById('caesarShift').value);
+                        result = caesarCipher(text, shift);
+                        break;
+                    case 'rot13':
+                        result = rot13(text);
+                        break;
+                    case 'vigenere':
+                        const key = document.getElementById('vigenereKey').value;
+                        if (!key.trim()) {
+                            throw new Error('Please enter a key for Vigenère cipher');
+                        }
+                        result = vigenereCipher(text, key, true);
+                        break;
+                    case 'atbash':
+                        result = atbashCipher(text);
+                        break;
+                    case 'xor':
+                        const xorKey = document.getElementById('xorKey').value;
+                        if (!xorKey.trim()) {
+                            throw new Error('Please enter a key for XOR cipher');
+                        }
+                        result = xorCipher(text, xorKey);
+                        break;
+                    case 'binary':
+                        const format = document.querySelector('input[name="binaryFormat"]:checked').value;
+                        result = toBinary(text, format);
+                        break;
+                    case 'aes':
+                        const password = document.getElementById('aesPassword').value;
+                        if (!password.trim()) {
+                            throw new Error('Please enter a password for AES encryption');
+                        }
+                        if (password.length < 8) {
+                            throw new Error('Password should be at least 8 characters long for security');
+                        }
+                        setLoading(true);
+                        result = await aesEncrypt(text, password);
+                        setLoading(false);
+                        break;
+                    default:
+                        result = 'Select a valid encoding method';
+                }
+                
+                document.getElementById('encodeOutput').value = result;
+            } catch (error) {
+                setLoading(false);
+                showError('encodeError', error.message);
+                document.getElementById('encodeOutput').value = '';
+            }
         }
         
         // Main decode function
-        function decodeText() {
+        async function decodeText() {
             const text = document.getElementById('decodeInput').value;
             const method = document.getElementById('decodeMethod').value;
             let result = '';
             
-            switch(method) {
-                case 'caesar':
-                    const shift = parseInt(document.getElementById('caesarShiftDecode').value);
-                    result = caesarCipher(text, (26 - shift) % 26);
-                    break;
-                case 'rot13':
-                    result = rot13(text);
-                    break;
-                case 'vigenere':
-                    const key = document.getElementById('vigenereKeyDecode').value;
-                    result = vigenereCipher(text, key, false);
-                    break;
-                case 'atbash':
-                    result = atbashCipher(text);
-                    break;
-                case 'xor':
-                    const xorKey = document.getElementById('xorKeyDecode').value;
-                    result = xorCipher(text, xorKey);
-                    break;
-                case 'binary':
-                    const format = document.getElementById('binaryFormatDecode').value;
-                    result = fromBinary(text, format);
-                    break;
-                default:
-                    result = 'Select a valid decoding method';
-            }
+            hideError('decodeError');
             
-            document.getElementById('decodeOutput').value = result;
+            try {
+                switch(method) {
+                    case 'caesar':
+                        const shift = parseInt(document.getElementById('caesarShiftDecode').value);
+                        result = caesarCipher(text, (26 - shift) % 26);
+                        break;
+                    case 'rot13':
+                        result = rot13(text);
+                        break;
+                    case 'vigenere':
+                        const key = document.getElementById('vigenereKeyDecode').value;
+                        if (!key.trim()) {
+                            throw new Error('Please enter a key for Vigenère cipher');
+                        }
+                        result = vigenereCipher(text, key, false);
+                        break;
+                    case 'atbash':
+                        result = atbashCipher(text);
+                        break;
+                    case 'xor':
+                        const xorKey = document.getElementById('xorKeyDecode').value;
+                        if (!xorKey.trim()) {
+                            throw new Error('Please enter a key for XOR cipher');
+                        }
+                        result = xorCipher(text, xorKey);
+                        break;
+                    case 'binary':
+                        const format = document.getElementById('binaryFormatDecode').value;
+                        result = fromBinary(text, format);
+                        break;
+                    case 'aes':
+                        const password = document.getElementById('aesPasswordDecode').value;
+                        if (!password.trim()) {
+                            throw new Error('Please enter the password for AES decryption');
+                        }
+                        if (!text.trim()) {
+                            throw new Error('Please enter encrypted data to decrypt');
+                        }
+                        setLoading(true);
+                        result = await aesDecrypt(text, password);
+                        setLoading(false);
+                        break;
+                    default:
+                        result = 'Select a valid decoding method';
+                }
+                
+                document.getElementById('decodeOutput').value = result;
+            } catch (error) {
+                setLoading(false);
+                showError('decodeError', error.message);
+                document.getElementById('decodeOutput').value = '';
+            }
         }
     </script>
 </body>
