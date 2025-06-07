@@ -809,4 +809,380 @@
                 );
                 
                 let offset = 0;
-                result.set(new Uint8Array(header
+                result.set(new Uint8Array(headerLength.buffer), offset);
+                offset += 4;
+                result.set(headerBytes, offset);
+                offset += headerBytes.length;
+                result.set(salt, offset);
+                offset += salt.length;
+                result.set(iv, offset);
+                offset += iv.length;
+                result.set(new Uint8Array(encrypted), offset);
+                
+                onProgress(100);
+                return result;
+            } catch (error) {
+                throw new Error('File encryption failed: ' + error.message);
+            }
+        }
+        
+        async function aesDecryptFile(encryptedData, password, onProgress) {
+            try {
+                // Read header length (first 4 bytes)
+                const headerLength = new Uint32Array(encryptedData.slice(0, 4).buffer)[0];
+                
+                onProgress(10);
+                
+                // Read header
+                const headerBytes = encryptedData.slice(4, 4 + headerLength);
+                const headerJson = new TextDecoder().decode(headerBytes);
+                const header = JSON.parse(headerJson);
+                
+                onProgress(25);
+                
+                // Extract salt, IV, and encrypted data
+                let offset = 4 + headerLength;
+                const salt = encryptedData.slice(offset, offset + 16);
+                offset += 16;
+                const iv = encryptedData.slice(offset, offset + 12);
+                offset += 12;
+                const encrypted = encryptedData.slice(offset);
+                
+                // Derive key from password
+                const key = await deriveKey(password, salt);
+                
+                onProgress(50);
+                
+                // Decrypt the data
+                const decrypted = await window.crypto.subtle.decrypt(
+                    {
+                        name: 'AES-GCM',
+                        iv: iv
+                    },
+                    key,
+                    encrypted
+                );
+                
+                onProgress(90);
+                
+                return {
+                    data: new Uint8Array(decrypted),
+                    originalName: header.originalName,
+                    timestamp: header.timestamp
+                };
+            } catch (error) {
+                throw new Error('File decryption failed. Check your password and try again.');
+            }
+        }
+        
+        // File encryption function
+        async function encryptFile() {
+            if (!selectedEncryptFile) {
+                showError('fileEncryptError', 'Please select a file to encrypt');
+                return;
+            }
+            
+            const password = document.getElementById('fileEncryptPassword').value;
+            if (!password.trim()) {
+                showError('fileEncryptError', 'Please enter a password');
+                return;
+            }
+            
+            if (password.length < 8) {
+                showError('fileEncryptError', 'Password should be at least 8 characters long for security');
+                return;
+            }
+            
+            try {
+                hideError('fileEncryptError');
+                setLoading(true);
+                
+                // Show progress bar
+                const progressBar = document.getElementById('encryptProgress');
+                const progressFill = document.getElementById('encryptProgressFill');
+                progressBar.style.display = 'block';
+                
+                // Store original filename
+                originalFileName = selectedEncryptFile.name;
+                
+                // Read file as array buffer
+                const fileData = await readFileAsArrayBuffer(selectedEncryptFile);
+                
+                // Encrypt the file
+                const encryptedData = await aesEncryptFile(fileData, password, (progress) => {
+                    progressFill.style.width = progress + '%';
+                });
+                
+                // Create blob for download
+                encryptedFileBlob = new Blob([encryptedData], { type: 'application/octet-stream' });
+                
+                // Show result
+                document.getElementById('encryptResult').style.display = 'block';
+                document.getElementById('downloadEncrypted').onclick = () => {
+                    downloadFile(encryptedFileBlob, selectedEncryptFile.name + '.enc');
+                };
+                
+                progressBar.style.display = 'none';
+                setLoading(false);
+                
+            } catch (error) {
+                setLoading(false);
+                document.getElementById('encryptProgress').style.display = 'none';
+                showError('fileEncryptError', error.message);
+            }
+        }
+        
+        // File decryption function
+        async function decryptFile() {
+            if (!selectedDecryptFile) {
+                showError('fileDecryptError', 'Please select an encrypted file to decrypt');
+                return;
+            }
+            
+            const password = document.getElementById('fileDecryptPassword').value;
+            if (!password.trim()) {
+                showError('fileDecryptError', 'Please enter the password');
+                return;
+            }
+            
+            try {
+                hideError('fileDecryptError');
+                setLoading(true);
+                
+                // Show progress bar
+                const progressBar = document.getElementById('decryptProgress');
+                const progressFill = document.getElementById('decryptProgressFill');
+                progressBar.style.display = 'block';
+                
+                // Read encrypted file as array buffer
+                const encryptedData = new Uint8Array(await readFileAsArrayBuffer(selectedDecryptFile));
+                
+                // Decrypt the file
+                const result = await aesDecryptFile(encryptedData, password, (progress) => {
+                    progressFill.style.width = progress + '%';
+                });
+                
+                progressFill.style.width = '100%';
+                
+                // Create blob for download
+                decryptedFileBlob = new Blob([result.data]);
+                
+                // Show result
+                document.getElementById('decryptResult').style.display = 'block';
+                document.getElementById('downloadDecrypted').onclick = () => {
+                    downloadFile(decryptedFileBlob, result.originalName || 'decrypted_file');
+                };
+                
+                progressBar.style.display = 'none';
+                setLoading(false);
+                
+            } catch (error) {
+                setLoading(false);
+                document.getElementById('decryptProgress').style.display = 'none';
+                showError('fileDecryptError', error.message);
+            }
+        }
+        
+        // Helper function to read file as array buffer
+        function readFileAsArrayBuffer(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = e => reject(new Error('Failed to read file'));
+                reader.readAsArrayBuffer(file);
+            });
+        }
+        
+        // Helper function to download file
+        function downloadFile(blob, filename) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        // Decoding functions
+        function fromBinary(binaryStr, format) {
+            // Clean and normalize the binary string
+            let cleanBinary = binaryStr.replace(/[^01]/g, '');
+            
+            // If format is auto, try to detect
+            if (format === 'auto') {
+                // Check if it's already space-separated bytes
+                const spaceSeparated = binaryStr.trim().split(/\s+/);
+                if (spaceSeparated.every(byte => byte.length === 8 || byte.length === 0)) {
+                    cleanBinary = spaceSeparated.join('');
+                }
+                // Otherwise use the clean binary we already have
+            } else if (format === 'space') {
+                cleanBinary = binaryStr.replace(/\s/g, '');
+            } else if (format === '8bit') {
+                cleanBinary = binaryStr.split(/\s+/).join('');
+            }
+            
+            // Split into 8-bit chunks
+            const bytes = cleanBinary.match(/.{1,8}/g) || [];
+            
+            // Convert to text
+            let result = '';
+            for (let byte of bytes) {
+                if (byte.length === 8) {
+                    result += String.fromCharCode(parseInt(byte, 2));
+                }
+            }
+            return result;
+        }
+        
+        // Error handling functions
+        function showError(elementId, message) {
+            const errorDiv = document.getElementById(elementId);
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+        }
+        
+        function hideError(elementId) {
+            const errorDiv = document.getElementById(elementId);
+            errorDiv.style.display = 'none';
+        }
+        
+        function setLoading(isLoading) {
+            const buttons = document.querySelectorAll('button');
+            buttons.forEach(btn => {
+                if (isLoading) {
+                    btn.classList.add('loading');
+                } else {
+                    btn.classList.remove('loading');
+                }
+            });
+        }
+        
+        // Main encode function
+        async function encodeText() {
+            const text = document.getElementById('encodeInput').value;
+            const method = document.getElementById('encodeMethod').value;
+            let result = '';
+            
+            hideError('encodeError');
+            
+            try {
+                switch(method) {
+                    case 'caesar':
+                        const shift = parseInt(document.getElementById('caesarShift').value);
+                        result = caesarCipher(text, shift);
+                        break;
+                    case 'rot13':
+                        result = rot13(text);
+                        break;
+                    case 'vigenere':
+                        const key = document.getElementById('vigenereKey').value;
+                        if (!key.trim()) {
+                            throw new Error('Please enter a key for Vigenère cipher');
+                        }
+                        result = vigenereCipher(text, key, true);
+                        break;
+                    case 'atbash':
+                        result = atbashCipher(text);
+                        break;
+                    case 'xor':
+                        const xorKey = document.getElementById('xorKey').value;
+                        if (!xorKey.trim()) {
+                            throw new Error('Please enter a key for XOR cipher');
+                        }
+                        result = xorCipher(text, xorKey);
+                        break;
+                    case 'binary':
+                        const format = document.querySelector('input[name="binaryFormat"]:checked').value;
+                        result = toBinary(text, format);
+                        break;
+                    case 'aes':
+                        const password = document.getElementById('aesPassword').value;
+                        if (!password.trim()) {
+                            throw new Error('Please enter a password for AES encryption');
+                        }
+                        if (password.length < 8) {
+                            throw new Error('Password should be at least 8 characters long for security');
+                        }
+                        setLoading(true);
+                        result = await aesEncrypt(text, password);
+                        setLoading(false);
+                        break;
+                    default:
+                        result = 'Select a valid encoding method';
+                }
+                
+                document.getElementById('encodeOutput').value = result;
+            } catch (error) {
+                setLoading(false);
+                showError('encodeError', error.message);
+                document.getElementById('encodeOutput').value = '';
+            }
+        }
+        
+        // Main decode function
+        async function decodeText() {
+            const text = document.getElementById('decodeInput').value;
+            const method = document.getElementById('decodeMethod').value;
+            let result = '';
+            
+            hideError('decodeError');
+            
+            try {
+                switch(method) {
+                    case 'caesar':
+                        const shift = parseInt(document.getElementById('caesarShiftDecode').value);
+                        result = caesarCipher(text, (26 - shift) % 26);
+                        break;
+                    case 'rot13':
+                        result = rot13(text);
+                        break;
+                    case 'vigenere':
+                        const key = document.getElementById('vigenereKeyDecode').value;
+                        if (!key.trim()) {
+                            throw new Error('Please enter a key for Vigenère cipher');
+                        }
+                        result = vigenereCipher(text, key, false);
+                        break;
+                    case 'atbash':
+                        result = atbashCipher(text);
+                        break;
+                    case 'xor':
+                        const xorKey = document.getElementById('xorKeyDecode').value;
+                        if (!xorKey.trim()) {
+                            throw new Error('Please enter a key for XOR cipher');
+                        }
+                        result = xorCipher(text, xorKey);
+                        break;
+                    case 'binary':
+                        const format = document.getElementById('binaryFormatDecode').value;
+                        result = fromBinary(text, format);
+                        break;
+                    case 'aes':
+                        const password = document.getElementById('aesPasswordDecode').value;
+                        if (!password.trim()) {
+                            throw new Error('Please enter the password for AES decryption');
+                        }
+                        if (!text.trim()) {
+                            throw new Error('Please enter encrypted data to decrypt');
+                        }
+                        setLoading(true);
+                        result = await aesDecrypt(text, password);
+                        setLoading(false);
+                        break;
+                    default:
+                        result = 'Select a valid decoding method';
+                }
+                
+                document.getElementById('decodeOutput').value = result;
+            } catch (error) {
+                setLoading(false);
+                showError('decodeError', error.message);
+                document.getElementById('decodeOutput').value = '';
+            }
+        }
+    </script>
+</body>
+</html>
