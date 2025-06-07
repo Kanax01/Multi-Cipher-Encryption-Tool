@@ -110,25 +110,6 @@
             opacity: 0.6;
             pointer-events: none;
         }
-        .file-section {
-            margin-top: 20px;
-            padding: 15px;
-            background-color: #e9f7ef;
-            border-radius: 4px;
-            border: 1px dashed #4CAF50;
-        }
-        .file-info {
-            margin: 10px 0;
-            font-size: 0.9em;
-            color: #555;
-        }
-        .download-btn {
-            background-color: #2196F3;
-            margin-top: 10px;
-        }
-        .download-btn:hover {
-            background-color: #0b7dda;
-        }
     </style>
 </head>
 <body>
@@ -138,7 +119,6 @@
         <div class="tab-container">
             <button class="tab active" onclick="openTab('encoder')">Encoder</button>
             <button class="tab" onclick="openTab('decoder')">Decoder</button>
-            <button class="tab" onclick="openTab('file-encrypt')">File Encryption</button>
         </div>
         
         <!-- Encoder Tab -->
@@ -194,56 +174,6 @@
                 <h3>Decoded Result:</h3>
                 <textarea id="decodeOutput" readonly></textarea>
                 <div id="decodeError" class="error" style="display: none;"></div>
-            </div>
-        </div>
-        
-        <!-- File Encryption Tab -->
-        <div id="file-encrypt" class="tab-content">
-            <h2>File Encryption/Decryption</h2>
-            <p>Securely encrypt and decrypt files using AES-256 encryption.</p>
-            
-            <div class="file-section">
-                <h3>Encrypt File</h3>
-                <input type="file" id="fileToEncrypt">
-                <div class="method-options">
-                    <div class="aes-warning">
-                        🔒 <strong>AES-256 Military Grade File Encryption</strong><br>
-                        Your password will be used to derive a 256-bit encryption key using PBKDF2.
-                        The encrypted file will have a '.encrypted' extension added.
-                    </div>
-                    <label>Password:</label>
-                    <input type="password" id="fileEncryptPassword" placeholder="Enter strong password">
-                    <br>
-                    <label>
-                        <input type="checkbox" id="showFileEncryptPassword"> Show password
-                    </label>
-                </div>
-                <button onclick="encryptFile()">Encrypt File</button>
-                <div id="fileEncryptError" class="error" style="display: none;"></div>
-                <div id="fileEncryptInfo" class="file-info" style="display: none;"></div>
-                <a id="encryptedDownload" class="download-btn" style="display: none;">Download Encrypted File</a>
-            </div>
-            
-            <div class="file-section">
-                <h3>Decrypt File</h3>
-                <input type="file" id="fileToDecrypt">
-                <div class="method-options">
-                    <div class="aes-warning">
-                        🔓 <strong>AES-256 File Decryption</strong><br>
-                        Enter the same password that was used for encryption.
-                        The decrypted file will have the original filename restored.
-                    </div>
-                    <label>Password:</label>
-                    <input type="password" id="fileDecryptPassword" placeholder="Enter password">
-                    <br>
-                    <label>
-                        <input type="checkbox" id="showFileDecryptPassword"> Show password
-                    </label>
-                </div>
-                <button onclick="decryptFile()">Decrypt File</button>
-                <div id="fileDecryptError" class="error" style="display: none;"></div>
-                <div id="fileDecryptInfo" class="file-info" style="display: none;"></div>
-                <a id="decryptedDownload" class="download-btn" style="display: none;">Download Decrypted File</a>
             </div>
         </div>
     </div>
@@ -425,15 +355,6 @@
         window.onload = function() {
             showEncodeOptions();
             showDecodeOptions();
-            
-            // Initialize file encryption password toggles
-            document.getElementById('showFileEncryptPassword').addEventListener('change', function() {
-                document.getElementById('fileEncryptPassword').type = this.checked ? 'text' : 'password';
-            });
-            
-            document.getElementById('showFileDecryptPassword').addEventListener('change', function() {
-                document.getElementById('fileDecryptPassword').type = this.checked ? 'text' : 'password';
-            });
         };
         
         // Encoding functions
@@ -598,206 +519,6 @@
             } catch (error) {
                 throw new Error('Decryption failed. Check your password and try again.');
             }
-        }
-        
-        // File Encryption Functions
-        async function encryptFile() {
-            const fileInput = document.getElementById('fileToEncrypt');
-            const password = document.getElementById('fileEncryptPassword').value;
-            
-            hideError('fileEncryptError');
-            document.getElementById('fileEncryptInfo').style.display = 'none';
-            document.getElementById('encryptedDownload').style.display = 'none';
-            
-            if (!fileInput.files || fileInput.files.length === 0) {
-                showError('fileEncryptError', 'Please select a file to encrypt');
-                return;
-            }
-            
-            if (!password.trim()) {
-                showError('fileEncryptError', 'Please enter a password for encryption');
-                return;
-            }
-            
-            if (password.length < 8) {
-                showError('fileEncryptError', 'Password should be at least 8 characters long for security');
-                return;
-            }
-            
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-            
-            reader.onload = async function(e) {
-                try {
-                    setLoading(true);
-                    const fileData = new Uint8Array(e.target.result);
-                    
-                    // Generate random salt and IV
-                    const salt = window.crypto.getRandomValues(new Uint8Array(16));
-                    const iv = window.crypto.getRandomValues(new Uint8Array(12));
-                    
-                    // Derive key from password
-                    const key = await deriveKey(password, salt);
-                    
-                    // Encrypt the file data
-                    const encrypted = await window.crypto.subtle.encrypt(
-                        {
-                            name: 'AES-GCM',
-                            iv: iv
-                        },
-                        key,
-                        fileData
-                    );
-                    
-                    // Combine salt + iv + encrypted data + original filename
-                    const result = new Uint8Array(salt.length + iv.length + encrypted.byteLength + 4 + file.name.length);
-                    
-                    // Store salt (16 bytes)
-                    result.set(salt, 0);
-                    
-                    // Store IV (12 bytes)
-                    result.set(iv, salt.length);
-                    
-                    // Store filename length (4 bytes)
-                    const filenameLength = file.name.length;
-                    const filenameLengthBytes = new Uint8Array(new Uint32Array([filenameLength]).buffer);
-                    result.set(filenameLengthBytes, salt.length + iv.length);
-                    
-                    // Store filename
-                    const filenameBytes = new TextEncoder().encode(file.name);
-                    result.set(filenameBytes, salt.length + iv.length + 4);
-                    
-                    // Store encrypted data
-                    result.set(new Uint8Array(encrypted), salt.length + iv.length + 4 + filenameBytes.length);
-                    
-                    // Create download link
-                    const blob = new Blob([result], { type: 'application/octet-stream' });
-                    const url = URL.createObjectURL(blob);
-                    const downloadLink = document.getElementById('encryptedDownload');
-                    
-                    downloadLink.href = url;
-                    downloadLink.download = file.name + '.encrypted';
-                    downloadLink.style.display = 'inline-block';
-                    
-                    // Show file info
-                    const fileInfo = document.getElementById('fileEncryptInfo');
-                    fileInfo.innerHTML = `
-                        <strong>File encrypted successfully:</strong><br>
-                        Original: ${file.name} (${formatFileSize(file.size)})<br>
-                        Encrypted: ${file.name}.encrypted (${formatFileSize(result.length)})
-                    `;
-                    fileInfo.style.display = 'block';
-                    
-                    setLoading(false);
-                } catch (error) {
-                    setLoading(false);
-                    showError('fileEncryptError', 'Error during encryption: ' + error.message);
-                }
-            };
-            
-            reader.onerror = function() {
-                setLoading(false);
-                showError('fileEncryptError', 'Error reading file');
-            };
-            
-            reader.readAsArrayBuffer(file);
-        }
-        
-        async function decryptFile() {
-            const fileInput = document.getElementById('fileToDecrypt');
-            const password = document.getElementById('fileDecryptPassword').value;
-            
-            hideError('fileDecryptError');
-            document.getElementById('fileDecryptInfo').style.display = 'none';
-            document.getElementById('decryptedDownload').style.display = 'none';
-            
-            if (!fileInput.files || fileInput.files.length === 0) {
-                showError('fileDecryptError', 'Please select a file to decrypt');
-                return;
-            }
-            
-            if (!password.trim()) {
-                showError('fileDecryptError', 'Please enter the password for decryption');
-                return;
-            }
-            
-            const file = fileInput.files[0];
-            const reader = new FileReader();
-            
-            reader.onload = async function(e) {
-                try {
-                    setLoading(true);
-                    const encryptedData = new Uint8Array(e.target.result);
-                    
-                    // Extract salt (first 16 bytes)
-                    const salt = encryptedData.slice(0, 16);
-                    
-                    // Extract IV (next 12 bytes)
-                    const iv = encryptedData.slice(16, 28);
-                    
-                    // Extract filename length (next 4 bytes)
-                    const filenameLengthBytes = encryptedData.slice(28, 32);
-                    const filenameLength = new Uint32Array(filenameLengthBytes.buffer)[0];
-                    
-                    // Extract filename
-                    const filenameBytes = encryptedData.slice(32, 32 + filenameLength);
-                    const originalFilename = new TextDecoder().decode(filenameBytes);
-                    
-                    // Extract encrypted data (the rest)
-                    const encrypted = encryptedData.slice(32 + filenameLength);
-                    
-                    // Derive key from password
-                    const key = await deriveKey(password, salt);
-                    
-                    // Decrypt the file data
-                    const decrypted = await window.crypto.subtle.decrypt(
-                        {
-                            name: 'AES-GCM',
-                            iv: iv
-                        },
-                        key,
-                        encrypted
-                    );
-                    
-                    // Create download link
-                    const blob = new Blob([decrypted], { type: 'application/octet-stream' });
-                    const url = URL.createObjectURL(blob);
-                    const downloadLink = document.getElementById('decryptedDownload');
-                    
-                    downloadLink.href = url;
-                    downloadLink.download = originalFilename;
-                    downloadLink.style.display = 'inline-block';
-                    
-                    // Show file info
-                    const fileInfo = document.getElementById('fileDecryptInfo');
-                    fileInfo.innerHTML = `
-                        <strong>File decrypted successfully:</strong><br>
-                        Encrypted: ${file.name} (${formatFileSize(file.size)})<br>
-                        Decrypted: ${originalFilename} (${formatFileSize(decrypted.byteLength)})
-                    `;
-                    fileInfo.style.display = 'block';
-                    
-                    setLoading(false);
-                } catch (error) {
-                    setLoading(false);
-                    showError('fileDecryptError', 'Decryption failed. Check your password and try again.');
-                }
-            };
-            
-            reader.onerror = function() {
-                setLoading(false);
-                showError('fileDecryptError', 'Error reading file');
-            };
-            
-            reader.readAsArrayBuffer(file);
-        }
-        
-        function formatFileSize(bytes) {
-            if (bytes === 0) return '0 Bytes';
-            const k = 1024;
-            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-            const i = Math.floor(Math.log(bytes) / Math.log(k));
-            return parseFloat((bytes / Math.pow(k, i)).toFixed(2) + ' ' + sizes[i];
         }
         
         // Decoding functions
